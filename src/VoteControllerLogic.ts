@@ -2,9 +2,13 @@ import { StringNumDict, OptionNameToVoteCountsDict, StageResult, UserVotes, Vote
 
 export class VoteControllerLogic {
 
-  constructor(public options: VoteOption[]) {
+  constructor(public options: VoteOption[], public useBordaScore: number = 0, public useTally: boolean = false) {
     if (!options || options.length <= 0) {
       throw new Error('options are required')
+    }
+
+    if (useBordaScore > 0 && useTally) {
+      throw new Error('useBordaScore and useTally cannot both be enabled')
     }
   }
 
@@ -22,7 +26,7 @@ export class VoteControllerLogic {
     let nextUserVotes: UserVotes[] = []
 
     for (let userVotes of currentStageResult.userVotes) {
-      let votesWithoutLosers = new UserVotes(userVotes.filter(option => !losers.includes(option)))
+      let votesWithoutLosers = new UserVotes(userVotes.filter(option => !losers.includes(option)), userVotes.username)
       nextUserVotes.push(votesWithoutLosers)
     }
 
@@ -42,6 +46,8 @@ export class VoteControllerLogic {
     let allVoteCounts = currentStageResult.rankedVoteCounts
 
     let fewestRankOneVotes: number | null = null
+    let lowestBordaScore: number | null = null
+    let lowestTally: number | null = null
 
     for (let optionName in allVoteCounts) {
       if (!this.optionHasVotes(optionName, allVoteCounts)) {
@@ -51,11 +57,31 @@ export class VoteControllerLogic {
       if (fewestRankOneVotes === null || rankOneVotes < fewestRankOneVotes) {
         fewestRankOneVotes = rankOneVotes
       }
+
+      let bordaScore = allVoteCounts[optionName].bordaScore
+      if (lowestBordaScore === null || bordaScore < lowestBordaScore) {
+        lowestBordaScore = bordaScore
+      }
+
+      let tallyCount = allVoteCounts[optionName].tallyCount
+      if (lowestTally === null || tallyCount < lowestTally) {
+        lowestTally = tallyCount
+      }
     }
 
     for (let optionName in allVoteCounts) {
-      if (allVoteCounts[optionName].voteCounts[0] === fewestRankOneVotes) {
-        losers.push(optionName)
+      if (this.useBordaScore > 0) {
+        if (allVoteCounts[optionName].bordaScore === lowestBordaScore) {
+          losers.push(optionName)
+        }
+      } else if (this.useTally) {
+        if (allVoteCounts[optionName].tallyCount === lowestTally) {
+          losers.push(optionName)
+        }
+      } else {
+        if (allVoteCounts[optionName].voteCounts[0] === fewestRankOneVotes) {
+          losers.push(optionName)
+        }
       }
     }
 
@@ -121,22 +147,57 @@ export class VoteControllerLogic {
       }
     }
 
-    stageResult.userVotes = userVotesArray.map(v => { return new UserVotes([...v]) })
+    for (let option in stageResult.rankedVoteCounts) {
+      let voteCounts = stageResult.rankedVoteCounts[option].voteCounts
+      let bordaScore = 0
+      let tallyCount = 0
+      for (let i = 0; i < voteCounts.length; i++) {
+        bordaScore += voteCounts[i] * (this.useBordaScore - i)
+        tallyCount += voteCounts[i]
+      }
+      stageResult.rankedVoteCounts[option].bordaScore = bordaScore
+      stageResult.rankedVoteCounts[option].tallyCount = tallyCount
+    }
 
+    stageResult.userVotes = userVotesArray.map(v => { return new UserVotes([...v], v.username) })
     return stageResult
   }
 
   getStageWinner(stageResult: StageResult): string | null {
-    let totalFirstRankVotes = 0
+    let totalScore = 0
 
-    for (let option in stageResult.rankedVoteCounts) {
-      totalFirstRankVotes += stageResult.rankedVoteCounts[option].voteCounts[0]
-    }
+    if (this.useBordaScore > 0) {
+      for (let option in stageResult.rankedVoteCounts) {
+        totalScore += stageResult.rankedVoteCounts[option].bordaScore
+      }
 
-    for (let option in stageResult.rankedVoteCounts) {
-      let percentage = stageResult.rankedVoteCounts[option].voteCounts[0] / totalFirstRankVotes
-      if (percentage > 0.5) {
-        return option
+      for (let option in stageResult.rankedVoteCounts) {
+        let percentage = stageResult.rankedVoteCounts[option].bordaScore / totalScore
+        if (percentage > 0.5) {
+          return option
+        }
+      }
+    } else if (this.useTally) {
+      for (let option in stageResult.rankedVoteCounts) {
+        totalScore += stageResult.rankedVoteCounts[option].tallyCount
+      }
+
+      for (let option in stageResult.rankedVoteCounts) {
+        let percentage = stageResult.rankedVoteCounts[option].tallyCount / totalScore
+        if (percentage > 0.5) {
+          return option
+        }
+      }
+    } else {
+      for (let option in stageResult.rankedVoteCounts) {
+        totalScore += stageResult.rankedVoteCounts[option].voteCounts[0]
+      }
+
+      for (let option in stageResult.rankedVoteCounts) {
+        let percentage = stageResult.rankedVoteCounts[option].voteCounts[0] / totalScore
+        if (percentage > 0.5) {
+          return option
+        }
       }
     }
 

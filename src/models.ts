@@ -3,15 +3,19 @@ export class VoteOption {
 }
 
 export class UserVotes extends Array<string> {
+  username: string = ''
   /* istanbul ignore next: super() cannot be covered by istanbul */
-  constructor(orderedVoteOptions: string[] = []) {
+  constructor(orderedVoteOptions: string[] = [], username: string = '') {
     super()
+    this.username = username
     this.push(...orderedVoteOptions)
   }
 }
 
 export class RankedVoteCounts {
   numOptions
+  bordaScore: number = 0
+  tallyCount: number = 0
   voteCounts: number[] = []
 
   constructor(numOptions: number) {
@@ -39,6 +43,7 @@ export type StringNumDict = { [key: string]: number }
 export class StageResult {
   userVotes: UserVotes[] = []
   rankedVoteCounts: OptionNameToVoteCountsDict = {}
+  bordaScore: number = 0
 
   constructor(voteOptions: VoteOption[]) {
     for (let voteOption of voteOptions) {

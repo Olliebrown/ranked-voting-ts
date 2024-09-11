@@ -5,11 +5,16 @@ export class VoteController {
   private logic: VoteControllerLogic
   originalVotes: UserVotes[] = []
 
-  constructor(public options: VoteOption[]) {
+  constructor(public options: VoteOption[], public useBordaScore: number = 0, public useTally: boolean = false) {
     if (!options || options.length <= 0) {
       throw new Error('options are required')
     }
-    this.logic = new VoteControllerLogic(options)
+
+    if (useBordaScore > 0 && useTally) {
+      throw new Error('useBordaScore and useTally cannot both be enabled')
+    }
+
+    this.logic = new VoteControllerLogic(options, useBordaScore, useTally)
   }
 
   acceptUserVotes(userVotes: UserVotes): void {
